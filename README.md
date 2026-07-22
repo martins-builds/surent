@@ -95,17 +95,6 @@ Email Templates / a Supabase Edge Function with a mail provider) plus a new
 public read-only route. This is the next feature to build — see the
 "Instructions for continuing" section below.
 
-## Continuing Development
-
-To pick this up in a new Claude session, share this repo along with:
-
-> I'm continuing the SURent project (React/Tailwind/Vite/Supabase, deployed
-> on Netlify). The database schema and RLS policies are in
-> `supabase/setup.sql`. Everything in the README's "What's Implemented"
-> list is working. Please build the Stage 5 read-only guarantor link next:
-> a public route that takes a token, loads chat history + negotiation
-> tracker + both profiles read-only, and is emailed to both guarantors
-> automatically when both parties confirm Viewing Scheduled.
 
 ## Design Tokens
 

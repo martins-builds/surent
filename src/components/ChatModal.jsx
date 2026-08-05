@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase.js'
 import { NEGOTIATION_STAGES, HIDDEN_AT_STAGES, VISIT_STATUS } from '../lib/constants.js'
 import { useAuth } from '../contexts/AuthContext.jsx'
 import ImageLightbox from './ImageLightbox.jsx'
+import { sendGuarantorLinksIfNeeded } from '../lib/guarantorLink.js'
 
 // property: the listing under negotiation
 // otherParty: profile of the other participant (landlord if I'm student, student if I'm landlord)
@@ -133,11 +134,13 @@ function VisitRequestModal({ property, otherParty, profile, onClose }) {
   const [date, setDate] = useState('')
   const [message, setMessage] = useState('')
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
 
   const submit = async (e) => {
     e.preventDefault()
+    setError('')
     setSaving(true)
-    await supabase.from('visit_requests').insert({
+    const { error: insertError } = await supabase.from('visit_requests').insert({
       property_id: property.id,
       student_id: profile.role === 'student' ? profile.id : otherParty.id,
       landlord_id: profile.role === 'landlord' ? profile.id : otherParty.id,
@@ -146,6 +149,10 @@ function VisitRequestModal({ property, otherParty, profile, onClose }) {
       status: VISIT_STATUS.PENDING
     })
     setSaving(false)
+    if (insertError) {
+      setError(insertError.message)
+      return
+    }
     onClose()
   }
 
@@ -153,6 +160,7 @@ function VisitRequestModal({ property, otherParty, profile, onClose }) {
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
       <div className="card w-full max-w-sm p-5">
         <h4 className="font-display font-bold text-primary mb-3">Request a Visit</h4>
+        {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-3">{error}</p>}
         <form onSubmit={submit} className="space-y-3">
           <div>
             <label className="text-sm font-medium">Date</label>
@@ -164,7 +172,7 @@ function VisitRequestModal({ property, otherParty, profile, onClose }) {
           </div>
           <div className="flex gap-2">
             <button type="button" onClick={onClose} className="btn-outline flex-1">Cancel</button>
-            <button type="submit" disabled={saving} className="btn-primary flex-1">Send Request</button>
+            <button type="submit" disabled={saving} className="btn-primary flex-1">{saving ? 'Sending…' : 'Send Request'}</button>
           </div>
         </form>
       </div>
@@ -362,8 +370,25 @@ function StageTab({ property, otherParty, profile }) {
         [`confirmed_at_${profile.role === 'landlord' ? 'landlord' : 'student'}`]: new Date().toISOString()
       })
     }
-    await fetchAgreements()
-    await maybeUpdatePropertyVisibility(stageKey, agreements, property.id)
+    const { data: freshAgreements } = await supabase
+      .from('negotiation_agreements')
+      .select('*')
+      .eq('property_id', property.id)
+    setAgreements(freshAgreements || [])
+
+    await maybeUpdatePropertyVisibility(stageKey, property.id)
+
+    // Stage 5 — once BOTH parties have confirmed "Viewing Scheduled", email
+    // a read-only negotiation link to both guarantors automatically.
+    if (stageKey === 'viewing_scheduled') {
+      const record = (freshAgreements || []).find((a) => a.stage === 'viewing_scheduled')
+      const bothConfirmed = record?.confirmed_by_landlord && record?.confirmed_by_student
+      if (bothConfirmed) {
+        const studentProfile = profile.role === 'student' ? profile : otherParty
+        const landlordProfile = profile.role === 'landlord' ? profile : otherParty
+        await sendGuarantorLinksIfNeeded(property, studentProfile, landlordProfile)
+      }
+    }
   }
 
   return (
@@ -417,7 +442,7 @@ function StageTab({ property, otherParty, profile }) {
 // Stage 4 — property visibility tied to negotiation stage.
 // Auto-hides at Price Agreed / Deposit Paid / Moved In; re-lists automatically
 // once BOTH parties confirm Vacated. Landlord can still manually re-list.
-async function maybeUpdatePropertyVisibility(stageKey, agreementsBeforeUpdate, propertyId) {
+async function maybeUpdatePropertyVisibility(stageKey, propertyId) {
   const { data: agreements } = await supabase
     .from('negotiation_agreements')
     .select('*')

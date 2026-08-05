@@ -5,7 +5,7 @@ import { ShieldCheck, Users, KeyRound, Home, Upload, ArrowRight, ArrowLeft, Load
 
 export default function Landing() {
   const [mode, setMode] = useState('login') // 'login' | 'signup'
-
+// needed
   return (
     <div className="min-h-screen bg-bg">
       <header className="border-b border-gray-200 bg-white">
